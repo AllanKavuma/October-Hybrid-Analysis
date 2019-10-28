@@ -1,0 +1,465 @@
+---
+title: "Site Load Vs DG hours"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+date: "date"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r code, echo=FALSE, include=FALSE, warning=FALSE}
+##Script to summarise hybrid data collected from galooli
+
+#import libraries
+library(xlsx) ## For reading excel or csv files
+library(dplyr) ## For data manipulation
+library(ggplot2) ## For graphs
+library(caret)  ## For ML predictions
+library(rattle) ## for Decision Tree plotting
+library(plotly)
+### read files
+hybriddata1 <- read.xlsx("Summary - Configurable - ATC Uganda.xlsx", sheetName = "data", colClasses = "character")
+hybriddata2 <- read.xlsx("Summary - Configurable - ATC Uganda 2.xlsx", sheetName = "data", colClasses = "character")
+##***added site list
+akSiteList <- read.xlsx("AllanKavumaSiteList.xlsx", sheetIndex = 1)
+## All sites
+sitelistfinal <- read.xlsx("Sites Allocation Final.xlsx", sheetIndex = 1)
+## Select the Regional Supervisor
+supervisorList <- sitelistfinal[sitelistfinal$New.Allocation == "Allan Kavuma",]
+
+####clean data
+##clean names of hybriddata1
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\(", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\)", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\-", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\,", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\.", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub(" ", "", x))
+names(hybriddata1) <- tolower(names(hybriddata1))
+
+##clean names of hybriddata2
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\(", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\)", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\-", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\,", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\.", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub(" ", "", x))
+names(hybriddata2) <- tolower(names(hybriddata2))
+
+##clean rows of hybriddata 1
+hybriddata1$usagetimedg1 <- as.numeric(as.character(hybriddata1$usagetimedg1))
+hybriddata1$usagetimebattery <- as.numeric(as.character(hybriddata1$usagetimebattery))
+hybriddata1$usagetimeunknown <- as.numeric(as.character(hybriddata1$usagetimeunknown))
+hybriddata1$dg2ignitioncount <- as.numeric(as.character(hybriddata1$dg1ignitioncount))
+hybriddata1$usagetimegrid <- as.numeric(as.character(hybriddata1$usagetimegrid))
+hybriddata1$usagetimesolar <- as.numeric(as.character(hybriddata1$usagetimesolar))
+hybriddata1$generalinformationsiteid <- as.numeric(as.character(hybriddata1$generalinformationsiteid))
+hybriddata1$generalinformationsitename <- as.character(hybriddata1$generalinformationsitename)
+hybriddata1$atskwhtotal <- as.numeric(as.character(hybriddata1$atskwhtotal))  ##added line
+hybriddata1$extrafield8 <- as.character(hybriddata1$extrafield8)
+hybriddata1$extrafield8 <- sapply(hybriddata1$extrafield8, function(x) gsub("\\-", "", x))
+hybriddata1$extrafield8 <- sapply(hybriddata1$extrafield8, function(x) gsub(" ", "", x))
+hybriddata1$extrafield8 <- tolower(hybriddata1$extrafield8)
+## savings
+hybriddata1 <- hybriddata1 %>% mutate(savings = 24 - usagetimedg1)  
+
+##clean rows of hybriddata 2
+hybriddata2$usagetimedg1 <- as.numeric(as.character(hybriddata2$usagetimedg1))
+hybriddata2$usagetimebattery <- as.numeric(as.character(hybriddata2$usagetimebattery))
+hybriddata2$usagetimeunknown <- as.numeric(as.character(hybriddata2$usagetimeunknown))
+hybriddata2$dg2ignitioncount <- as.numeric(as.character(hybriddata2$dg1ignitioncount))
+hybriddata2$usagetimegrid <- as.numeric(as.character(hybriddata2$usagetimegrid))
+hybriddata2$usagetimesolar <- as.numeric(as.character(hybriddata2$usagetimesolar))
+hybriddata2$generalinformationsiteid <- as.numeric(as.character(hybriddata2$generalinformationsiteid))
+hybriddata2$generalinformationsitename <- as.character(hybriddata2$generalinformationsitename)
+hybriddata2$atskwhtotal <- as.numeric(as.character(hybriddata2$atskwhtotal)) 
+hybriddata2$extrafield8 <- as.character(hybriddata2$extrafield8)
+hybriddata2$extrafield8 <- sapply(hybriddata2$extrafield8, function(x) gsub("\\-", "", x))
+hybriddata2$extrafield8 <- sapply(hybriddata2$extrafield8, function(x) gsub(" ", "", x))
+hybriddata2$extrafield8 <- tolower(hybriddata2$extrafield8)
+hybriddata2 <- hybriddata2 %>% mutate(savings = 24 - usagetimedg1)
+
+###################
+###################
+## Regional Data for all regions (added 22/09/2019)
+#regional_data <- hybriddata1
+##clean out sites with zero kwh
+#hybriddata1 <- hybriddata1 %>% filter(atskwhtotal != 0)
+## create column with kW
+#hybriddata1 <- hybriddata1 %>% mutate(siteload = atskwhtotal/24)
+## Actual site loads
+#hybriddata1$siteloadAct <-  hybriddata1$atskwhtotal/(hybriddata1$usagetimedg1+hybriddata1$usagetimegrid)
+## Remove Inf values
+#hybriddata1 <- hybriddata1 %>% filter(siteloadAct != Inf)
+##################
+##################
+
+##*** select only Allan Kavuma sites
+hybriddata1 <- hybriddata1 %>% 
+        filter(hybriddata1$generalinformationsiteid %in% supervisorList$ATC.SITE.ID)
+hybriddata2 <- hybriddata2 %>% 
+        filter(hybriddata2$generalinformationsiteid %in% supervisorList$ATC.SITE.ID)
+##***
+
+##04/04/2019 code
+##filter sites with hybrids
+
+##clean out sites with zero kwh
+hybriddata1 <- hybriddata1 %>% filter(atskwhtotal != 0)
+hybriddata2 <- hybriddata2 %>% filter(atskwhtotal != 0)
+
+## create column with kW
+hybriddata1 <- hybriddata1 %>% mutate(siteload = atskwhtotal/24)
+hybriddata2 <- hybriddata2 %>% mutate(siteload = atskwhtotal/24)
+## Actual site loads
+hybriddata1$siteloadAct <-  hybriddata1$atskwhtotal/(hybriddata1$usagetimedg1+hybriddata1$usagetimegrid)
+hybriddata2$siteloadAct <-  hybriddata2$atskwhtotal/(hybriddata2$usagetimedg1+hybriddata2$usagetimegrid)
+## Remove Inf values
+hybriddata1 <- hybriddata1 %>% filter(siteloadAct != Inf)
+## Overall Model for DG run hours and site load 
+fit <- lm(hybriddata1$siteloadAct ~ hybriddata1$usagetimedg1)
+
+##sites with hybrid and having grid
+hybridgrid1 <- hybriddata1 %>% filter(sitelayout %in% c("TL_UG_OUTDOOR_ONGRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV03",
+                                      "TL_UG_INDOOR_ONGRID_HYBRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV2",
+                                      "TL_UG_INDOOR_ONGRID_REV01", "TL_UG_INDOOR_ONGRID_REV2",
+                                      "TL_UG_OUTDOOR_ONGRID", " TL_UG_OUTDOOR_ONGRID_HYBRID_REV1",
+                                      "TL_UG_INDOOR_ONGRID_HYBRID_REV0", "TL_UG_INDOOR_ONGRID_HYBRID_REV1",
+                                      "TL_UG_INDOOR_ONGRID_REV0", " TL_UG_INDOOR_ONGRID_REV1",
+                                      " TL_UG_OUTDOOR_ONGRID_HYBRID", "TL_UG_OUTDOOR_ONGRID_REV2"))
+
+##sites with hybrid and not having grid
+hybridfull1 <- hybriddata1 %>% filter(!(sitelayout %in% c("TL_UG_OUTDOOR_ONGRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV03",
+                                                        "TL_UG_INDOOR_ONGRID_HYBRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV2",
+                                                        "TL_UG_INDOOR_ONGRID_REV01", "TL_UG_INDOOR_ONGRID_REV2",
+                                                        "TL_UG_OUTDOOR_ONGRID", " TL_UG_OUTDOOR_ONGRID_HYBRID_REV1",
+                                                        "TL_UG_INDOOR_ONGRID_HYBRID_REV0", "TL_UG_INDOOR_ONGRID_HYBRID_REV1",
+                                                        "TL_UG_INDOOR_ONGRID_REV0", " TL_UG_INDOOR_ONGRID_REV1",
+                                                        " TL_UG_OUTDOOR_ONGRID_HYBRID", "TL_UG_OUTDOOR_ONGRID_REV2")))
+
+##site with hybrid and solar
+hybridsolar1 <- hybriddata1 %>% filter(sitelayout %in% c("TL_UG_INDOOR_OFFGRID_HYBRID_SOLAR_REV03",
+                                                         "TL_UG_INDOOR_OFFGRID_HYBRID_SOLAR",
+                                                         "TL_UG_INDOOR_OFFGRID_HYBRID_SOLAR_REV2",
+                                                         "TL_UG_OUTDOOR_OFFGRID_HYBRID_SOLAR"))
+
+##sites with hybrid only
+nameshybridonly <- c("TL_UG_INDOOR_OFFGRID", "TL_UG_INDOOR_OFFGRID_HYBRID",
+                     "TL_UG_INDOOR_OFFGRID_HYBRID_REV0", "TL_UG_INDOOR_OFFGRID_HYBRID_REV1",
+                     "TL_UG_INDOOR_OFFGRID_HYBRID_REV2", "TL_UG_INDOOR_OFFGRID_REV0",
+                     "TL_UG_INDOOR_OFFGRID_REV1", "TL_UG_INDOOR_OFFGRID_REV2",
+                     "TL_UG_OUTDOOR_OFFGRID", "TL_UG_OUTDOOR_OFFGRID_HYBRID",
+                    "TL_UG_OUTDOOR_OFFGRID_HYBRID_REV03")
+##sites with only hybrid
+hybridonly1 <- hybriddata1 %>% filter(sitelayout %in% nameshybridonly)
+
+##hybrid only sites with LiBs
+hybridonlylibs <- hybridonly1 %>% filter(extrafield8 %in% c("libincell", 
+                                                            "liblgchem", 
+                                                            "libacmereime"))
+
+#hybrid only libs
+hybridonlylibs <- hybridonly1 %>% filter(extrafield8 %in% c("libincell", "liblgchem", "libacmereime"))
+####Visualisation graphs
+#site load Vs battery time
+ggloadbatterytime <- ggplot(data = hybridonly1, aes(usagetimebattery, siteload))
+#ggloadbatterytime + geom_point() + geom_smooth()
+#ggloadbatterytime + geom_point() + geom_smooth(method = "lm")
+#ggloadbatterytime <- ggplot(data = hybridonly1, aes(usagetimebattery, siteload, color = extrafield8))
+#ggloadbatterytime + geom_point() + geom_smooth(method = "lm")
+#ggloadbatterytime + geom_point() + geom_smooth(method = "lm", se = FALSE)
+#gghybridonlylib <- ggplot(data = hybridonlylibs, aes(usagetimebattery, siteload))
+#gghybridonlylib + geom_point()
+#gghybridonlylib + geom_point() + geom_smooth(method = "lm")
+#gghybridonlylib <- ggplot(data = hybridonlylibs, aes(usagetimebattery, siteload, color = extrafield8))
+#gghybridonlylib + geom_point() + geom_smooth(method = "lm")
+#gghybridonlylib + geom_boxplot()
+#ggplot(data = hybridsolar1, aes(usagetimesolar, fill = extrafield8)) + geom_histogram() + facet_grid(.~extrafield8)
+png(filename = paste(as.character(Sys.Date()), "solarloadignition.png", sep =" "), width = 960, height = 960)
+qplot(siteload, data = hybridsolar1, fill = dg1ignitioncount, alpha = 0.5, facets = ~dg1ignitioncount) +  
+        geom_vline(xintercept = 2) + labs(title = "Ignition counts as per site loads on solar sites")
+dev.off()
+
+png(filename = paste(as.character(Sys.Date()), "libignitionload.png"), width = 960, height = 960)
+qplot(siteload, data = hybridonlylibs, fill = dg1ignitioncount, alpha = 0.5, facets = ~dg1ignitioncount) +  
+            geom_vline(xintercept = 2) + labs(title = "Ignition counts as per site loads on LiB sites")
+dev.off()
+
+##dengrograms and heatmaps
+
+solarload <- hybridsolar1 %>% select(generalinformationsitename, usagetimedg1, siteload)
+rnames <- solarload[,1]
+mat_solarload <- data.matrix(solarload[,2:ncol(solarload)])
+rownames(mat_solarload) <- rnames
+#Euclidean distance between sites
+distmsload <- dist(mat_solarload, method = "euclidean")
+##create hierarchical clustered object of sites
+hclust_msload <- hclust(distmsload)
+#plot cluster dendrogram
+png(filename = "solardendrogram.png", height = 960, width = 960)
+spalette <- colorRampPalette(c("red", "yellow", "green"))(n = 299)
+plot(hclust_msload)
+dev.off()
+#heatmap
+png(filename = "solarandload.png", height = 960, width = 960)
+spalette <- colorRampPalette(c("red", "yellow", "green"))(n = 299)
+heatmap(mat_solarload)
+dev.off()
+
+##Clustering all different solar sites
+solarinfo <- c("generalinformationsitename","usagetimedg1",  
+               "usagetimebattery",
+               "usagetimesolar", "dg1ignitioncount","siteload")
+hsolar <- hybridsolar1 %>% select(solarinfo)
+rnames <- hsolar[,1]
+mathsolar <- data.matrix(hsolar[,2:ncol(hsolar)])
+rownames(mathsolar) <- rnames
+distmathsolar <- dist(mathsolar)
+hclusthsolar <- hclust(distmathsolar)
+
+#Dendrogram for sites with solar
+png(filename = paste(as.character(Sys.Date()),"solardendrogram.png", sep =" "), width = 960, height = 960)
+plot(hclusthsolar, main = "Dendrogram for solar parameters")
+dev.off()
+
+#Heatmap for other parameters on solar sites
+png(filename = paste(as.character(Sys.Date()),"solarheatmap.png", sep = " "), height = 960, width = 960)
+heatmap(mathsolar, col = spalette, Colv = NA, main = "Heatmap for all various solar parameters")
+dev.off()
+
+## 30/05/2019
+## Regression analysis
+## select allan's hybrids
+allanHy <- hybriddata1 %>% 
+                 filter(hybriddata1$generalinformationsiteid %in% 
+                                 supervisorList$ATC.SITE.ID)
+## Plots
+plot(hybriddata1$atskwhtotal, hybriddata1$usagetimedg1)
+plot(hybriddata1$siteload, hybriddata1$usagetimedg1)
+fitKwh <- lm(hybriddata1$usagetimedg1 ~ hybriddata1$atskwhtotal)
+fitSiteload1 <- lm(hybriddata1$usagetimedg1 ~ hybriddata1$siteload)
+abline(fitSiteload1) ## Drawing the regression
+s <- fitSiteload1$coefficients[2] ## slope for regression 
+5*s ## Predicting DG time for load of 5kW
+## Regression line 2: comparing run hours with load, overall
+png(filename = paste(as.character(Sys.Date()),"hybridanalysis.png", sep =" "), width = 960, height = 960)
+plot(siteload ~ usagetimedg1, data=allanHy, main = "Site Load Vs DG Hours",
+     xlab = "usagetimedg1 (hrs)", ylab = "siteload (kW)", cex = 2, pch = 19,
+     col="lightblue")
+text(siteload ~ usagetimedg1, labels=allanHy$generalinformationsitename,
+     data=allanHy, cex=0.9, font=2)
+fitSiteload2 <- lm(hybriddata1$siteload ~ hybriddata1$usagetimedg1)
+abline(fit, col = "green")
+abline(v = 10, col = "red", lwd = 2)
+abline(h = 4, col = "red")
+dev.off()
+
+## Bad sites
+allanHy %>% filter(generalinformationsitename %in% 
+                           c("Masheruka", "Rubuguri", "Ruhaama", 
+                             "Kitwe", "Rwentuha", "Ikumba", 
+                             "Kyatoko", "Bwambara", "Makanga", 
+                             "Butongo", "Mirama Hills", "Kambugu")) %>% 
+        select(generalinformationsitename, siteload)
+```
+
+```{r siteload, echo=FALSE, fig.height=10, fig.width=10}
+plot(siteload ~ usagetimedg1, data=allanHy, main = "Site Load Vs DG Hours",
+     xlab = "usagetimedg1 (hrs)", ylab = "siteload (kW)", cex = 2, pch = 19,
+     col="lightblue")
+text(siteload ~ usagetimedg1, labels=allanHy$generalinformationsitename,
+     data=allanHy, cex=0.9, font=2)
+## Construct model for only grid sites
+allanHybridOnly <- allanHy[!(allanHy$sitelayout %in% c("TL_UG_BUNKER_ONGRID_HYBRID")),]
+fitSiteload2 <- lm(allanHybridOnly$siteload ~ allanHybridOnly$usagetimedg1)
+abline(fitSiteload2, col = "green")
+abline(v = 10, col = "red", lwd = 2) ##  line for x axis = 10hrs
+abline(h = 4, col = "red", lwd = 2) ## line for y axis = 4kw
+```
+
+```{r }
+## Save the file allanHy
+save(allanHy, file = "allanHy.Rda")
+
+## To be load using load("allanHy.Rda") in shiny App
+```
+Site Loads with Average DG hours more than 10
+
+```{r bigRunhrs, echo=FALSE}
+allanHy %>% filter(generalinformationsitename %in% 
+                           c("Savanna", "Rubuguri", "Ruhaama", 
+                             "Kitwe", "Rwentuha", "ikumba", 
+                             "kyatoko", "Bwambara", "Makanga", 
+                             "Butongo", "Mirama Hills", "Kambugu")) %>% 
+        select(generalinformationsitename, siteload)
+par(mfrow = c(2,2))
+plot(fitSiteload2)
+
+```
+
+```{r OtherTests, include=FALSE}
+## New Date grouped according to solar and non solar
+hybridSolarYesNo <- hybriddata1 %>% mutate(solaryesno = as.factor(1 * (usagetimesolar > 0)))
+table(hybridSolarYesNo$solaryesno)
+## Remove grid sites
+hybridSolarYesNo <- hybridSolarYesNo %>% filter(usagetimegrid <= 0)
+
+solarSites <- hybridSolarYesNo %>% filter(solaryesno == 1)
+## Hybrid sites
+hybridSites <- hybridSolarYesNo %>% filter(solaryesno == 0)
+
+## Regression for solar and hybrids compared: DG only
+fitsolarhybridDG <- lm(savings ~ usagetimedg1, data = hybridSolarYesNo)
+## Regression for solar and hybrids compared: DG and solar
+fitsolarhybridDGS <- lm(savings ~ I(factor(solaryesno)), data = hybridSolarYesNo)
+## Regression for solar and hybrids compared: DG and siteload
+fitsolarhybridDGL <- lm(usagetimebattery ~ usagetimedg1 + siteload, data = hybridSolarYesNo)
+## Regression for solar and hybrids compared: DG and siteload + solar
+fitsolarhybridDGSL <- lm(savings ~ I(factor(solaryesno)) + siteload, data = hybridSolarYesNo)
+## Regression for solar and hybrids compared: siteload only
+fitsolarhybridL <- lm(savings ~ siteload, data = hybridSolarYesNo)
+
+##Regression for savings ~ siteload on solar sites
+fitsolarLoad <- lm(savings ~ siteload, data = solarSites)
+##Regression for savings ~ siteload on hybrid sites
+fithybridLoad <- lm(savings ~ siteload, data = hybridSites)
+
+
+
+## Predictions
+## Prediction With solar and without solar
+PrWithsolar <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1), interval = "confidence")
+PrWithoutsolar <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 0), interval = "confidence")
+## Prediction with solar and without solar but including load variable (2kW)
+PrWithSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1, siteload = 2), interval = "confidence")
+PrWithoutSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 0, siteload = 2), interval = "confidence")
+
+
+## Plot for hybrid sites
+plot(siteload ~ usagetimedg1, data=hybridSites, main = "Site Load Vs DG Hours",
+     xlab = "usagetimedg1 (hrs)", ylab = "siteload (kW)", cex = 2, pch = 19,
+     col="lightblue")
+text(siteload ~ usagetimedg1, labels=hybridSites$generalinformationsitename,
+     data=hybridSites, cex=0.9, font=2)
+fithybridSites <- lm(hybridSites$siteload ~ hybridSites$usagetimedg1)
+abline(fit, col = "green")
+abline(v = 10, col = "red", lwd = 2)
+abline(h = 4, col = "red", lwd = 2)
+
+## Regression for solar and hybrids compared
+
+```
+
+*To be corrected*
+- Fitted regression lines show that there is need to have optimisation for the low load sites that have been ignored.
+Prediction values show better savings realised for high load sites and less for low load sites.
+`r summary(fitsolarhybridL)$coef`
+- Prediction for 2kW
+`r predict(fitsolarhybridL, newdata = data.frame(siteload = 2), interval = "confidence")`
+- Prediction for 3kW
+`r predict(fitsolarhybridL, newdata = data.frame(siteload = 3), interval = "prediction")`
+*Above to be corrected*
+
+## Benefits of adding solar to sites
+- With inclusion of LiBs and rectifier systems, solar helps realise savings of between 18.06085 to 20.84824 (predicted = 19.45455)  
+`r predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1), interval = "confidence")`
+- Without solar, we are realising savings of about 16.15153 hrs to 18.19335 hrs (predicted = 17.17244)  
+`r predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 0), interval = "confidence")`  
+
+### Below is summary of improvement predictions with and without solar installation
+```{r solarpredictions, echo=TRUE}
+PrWithsolar <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1), interval = "confidence")
+PrWithoutsolar <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 0), interval = "confidence")
+PrWithsolar - PrWithoutsolar
+```
+### Below is summary of improvement predictions with and without solar installation for different loads
+#### 1.5kW
+```{r 1.5kw, results=TRUE}
+PrWithSolarLoad <- predict(fitsolarLoad, newdata = data.frame(siteload = 1.5), interval = "confidence")
+PrWithoutSolarLoad <- predict(fithybridLoad, newdata = data.frame( siteload = 1.5), interval = "confidence")
+PrWithSolarLoad - PrWithoutSolarLoad
+```
+#### 2kW
+```{r 2kw, results=TRUE}
+PrWithSolarLoad <- predict(fitsolarLoad, newdata = data.frame(siteload = 2), interval = "prediction")
+PrWithoutSolarLoad <- predict(fithybridLoad, newdata = data.frame( siteload = 2), interval = "prediction")
+PrWithSolarLoad - PrWithoutSolarLoad
+```
+#### 2.5kW
+```{r 2.5kw, results=TRUE}
+PrWithSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1, siteload = 2.5), interval = "confidence")
+PrWithoutSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 0, siteload = 2.5), interval = "confidence")
+PrWithSolarLoad - PrWithoutSolarLoad
+```
+#### 3kW
+```{r 3kw, results=TRUE}
+PrWithSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1, siteload = 3), interval = "confidence")
+PrWithoutSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 0, siteload = 3), interval = "confidence")
+PrWithSolarLoad - PrWithoutSolarLoad
+```
+#### 3.5kW
+```{r 3.5kw, results=TRUE}
+PrWithSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1, siteload = 3.5), interval = "confidence")
+PrWithoutSolarLoad <- predict(fitsolarhybridDGS, newdata = data.frame(solaryesno = 1, siteload = 3), interval = "confidence")
+PrWithSolarLoad - PrWithoutSolarLoad
+```
+
+```{r otherregressions}
+fitsolarhybridS <- lm(savings ~ I(factor(solaryesno)), data = hybridSolarYesNo)
+## Regression for solar and hybrids compared: DG and siteload + solar
+fitsolarhybridSL <- lm(savings ~ I(factor(solaryesno)) + siteload, data = hybridSolarYesNo)
+## Regression for solar and hybrids compared: siteload only
+fitsolarhybridL <- lm(savings ~ siteload, data = hybridSolarYesNo)
+## Load and solar interrellation
+fitsolarhybridSLInter <- lm(savings ~ I(factor(solaryesno)) + siteload + siteload*I(factor(solaryesno)), data = hybridSolarYesNo)
+
+## Regression of savings with solar
+summary(fitsolarhybridS)$coef
+
+## Regression of savings with Load
+summary(fitsolarhybridL)$coef
+
+## Regression of savings with solar and load
+summary(fitsolarhybridSL)$coef
+
+## Regression of savings with solar and load interrelation
+summary(fitsolarhybridSLInter)$coef
+
+head(hybridSolarYesNo)
+
+```
+
+## Some predictions using Decision Trees "rpart"
+## To be deleted.
+```{r eval = FALSE}
+head(allanHy)
+inTrain <- createDataPartition(y = allanHy$usagetimedg1, p = 0.7, list = FALSE)
+training <- allanHy[inTrain,]
+testing <- allanHy[-inTrain,]
+modFit <- train(usagetimedg1 ~ ., data = training, method = "rpart")
+print(modFit$finalModel)
+plot(modFit$finalModel, uniform = TRUE, main = "Classification Tree")
+text(modFit$finalModel, use.n = TRUE, all = TRUE, cex = 0.8)
+## Plotting another type of decision tree
+fancyRpartPlot(modFit$finalModel)
+```
+
+
+COMMENTS:  
+16/09/2019
+Bugamba: Fix automation issue, Nyakajumo: Resolve rectifier module issue, Nteko, Makanga, Kabaraga: Burnt subrack issues.
+
+Kambugu: Replace faulty rectifier module (FT 348816), optimise to 8.19500W/8.16
+Kitampene: Restore rectifier module
+
+Bwambara: optimum at 9500W
+Bugongi: optimize to 9500W (167A, 57V)
+Butogota: optimise to 9500W/10.2
+Mirama Hills: Optimise to 9500W/8.16
+Kambugu: Optimise to 9500W/8.16
+Savana: Optimise to 8600W/7.65
+Rwentuha: optimise to 9500W

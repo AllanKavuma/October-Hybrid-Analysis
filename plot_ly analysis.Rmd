@@ -1,0 +1,247 @@
+---
+title: "Performance of Hybrid Energy Saving Systems on Sites"
+author: "Allan Kavuma"
+date: ""
+output:
+  slidy_presentation: default
+  #ioslides_presentation: default
+  #beamer_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction  
+
+Different Energy Saving Initiatives adopted include;  
+- Solely Hybrid  
+- Grid and Hybrid  
+- Hybrid and Solar  
+
+Shiny application at this [website link](https://allankavuma.shinyapps.io/hybridanaly/) is used to do further analysis and prediction of the savings.  
+
+
+## 
+```{r code, echo=FALSE, include=FALSE, warning=FALSE}
+##Script to summarise hybrid data collected from galooli
+
+#import libraries
+library(xlsx) ## For reading excel or csv files
+library(dplyr) ## For data manipulation
+library(ggplot2) ## For graphs
+library(caret)  ## For ML predictions
+library(rattle) ## for Decision Tree plotting
+library(plotly)  ## For plotly graphs
+### read files
+hybriddata1 <- read.xlsx("Summary - Configurable - ATC Uganda.xlsx", sheetName = "data", colClasses = "character")
+hybriddata2 <- read.xlsx("Summary - Configurable - ATC Uganda 2.xlsx", sheetName = "data", colClasses = "character")
+##***added site list
+akSiteList <- read.xlsx("AllanKavumaSiteList.xlsx", sheetIndex = 1)
+## All sites
+sitelistfinal <- read.xlsx("Sites Allocation Final.xlsx", sheetIndex = 1)
+## Select the Regional Supervisor
+supervisorList <- sitelistfinal[sitelistfinal$New.Allocation == "Allan Kavuma",]
+
+
+####clean data
+##clean names of hybriddata1
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\(", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\)", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\-", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\,", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub("\\.", "", x))
+names(hybriddata1) <- sapply(names(hybriddata1), function(x) gsub(" ", "", x))
+names(hybriddata1) <- tolower(names(hybriddata1))
+
+##clean names of hybriddata2
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\(", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\)", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\-", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\,", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub("\\.", "", x))
+names(hybriddata2) <- sapply(names(hybriddata2), function(x) gsub(" ", "", x))
+names(hybriddata2) <- tolower(names(hybriddata2))
+
+##clean rows of hybriddata 1
+hybriddata1$usagetimedg1 <- as.numeric(as.character(hybriddata1$usagetimedg1))
+hybriddata1$usagetimebattery <- as.numeric(as.character(hybriddata1$usagetimebattery))
+hybriddata1$usagetimeunknown <- as.numeric(as.character(hybriddata1$usagetimeunknown))
+hybriddata1$dg2ignitioncount <- as.numeric(as.character(hybriddata1$dg1ignitioncount))
+hybriddata1$usagetimegrid <- as.numeric(as.character(hybriddata1$usagetimegrid))
+hybriddata1$usagetimesolar <- as.numeric(as.character(hybriddata1$usagetimesolar))
+hybriddata1$generalinformationsiteid <- as.numeric(as.character(hybriddata1$generalinformationsiteid))
+hybriddata1$generalinformationsitename <- as.character(hybriddata1$generalinformationsitename)
+hybriddata1$atskwhtotal <- as.numeric(as.character(hybriddata1$atskwhtotal))  ##added line
+hybriddata1$extrafield8 <- as.character(hybriddata1$extrafield8)
+hybriddata1$extrafield8 <- sapply(hybriddata1$extrafield8, function(x) gsub("\\-", "", x))
+hybriddata1$extrafield8 <- sapply(hybriddata1$extrafield8, function(x) gsub(" ", "", x))
+hybriddata1$extrafield8 <- tolower(hybriddata1$extrafield8)
+## savings
+hybriddata1 <- hybriddata1 %>% mutate(savings = 24 - usagetimedg1)  
+
+##clean rows of hybriddata 2
+hybriddata2$usagetimedg1 <- as.numeric(as.character(hybriddata2$usagetimedg1))
+hybriddata2$usagetimebattery <- as.numeric(as.character(hybriddata2$usagetimebattery))
+hybriddata2$usagetimeunknown <- as.numeric(as.character(hybriddata2$usagetimeunknown))
+hybriddata2$dg2ignitioncount <- as.numeric(as.character(hybriddata2$dg1ignitioncount))
+hybriddata2$usagetimegrid <- as.numeric(as.character(hybriddata2$usagetimegrid))
+hybriddata2$usagetimesolar <- as.numeric(as.character(hybriddata2$usagetimesolar))
+hybriddata2$generalinformationsiteid <- as.numeric(as.character(hybriddata2$generalinformationsiteid))
+hybriddata2$generalinformationsitename <- as.character(hybriddata2$generalinformationsitename)
+hybriddata2$atskwhtotal <- as.numeric(as.character(hybriddata2$atskwhtotal)) 
+hybriddata2$extrafield8 <- as.character(hybriddata2$extrafield8)
+hybriddata2$extrafield8 <- sapply(hybriddata2$extrafield8, function(x) gsub("\\-", "", x))
+hybriddata2$extrafield8 <- sapply(hybriddata2$extrafield8, function(x) gsub(" ", "", x))
+hybriddata2$extrafield8 <- tolower(hybriddata2$extrafield8)
+hybriddata2 <- hybriddata2 %>% mutate(savings = 24 - usagetimedg1)
+
+###################
+##################
+
+##*** select only Allan Kavuma sites
+hybriddata1 <- hybriddata1 %>% 
+        filter(hybriddata1$generalinformationsiteid %in% supervisorList$ATC.SITE.ID)
+hybriddata2 <- hybriddata2 %>% 
+        filter(hybriddata2$generalinformationsiteid %in% supervisorList$ATC.SITE.ID)
+##***
+
+##04/04/2019 code
+##filter sites with hybrids
+
+##clean out sites with zero kwh
+hybriddata1 <- hybriddata1 %>% filter(atskwhtotal != 0)
+hybriddata2 <- hybriddata2 %>% filter(atskwhtotal != 0)
+
+## create column with kW
+hybriddata1 <- hybriddata1 %>% mutate(siteload = atskwhtotal/24)
+hybriddata2 <- hybriddata2 %>% mutate(siteload = atskwhtotal/24)
+## Actual site loads
+hybriddata1$siteloadAct <-  hybriddata1$atskwhtotal/(hybriddata1$usagetimedg1+hybriddata1$usagetimegrid)
+hybriddata2$siteloadAct <-  hybriddata2$atskwhtotal/(hybriddata2$usagetimedg1+hybriddata2$usagetimegrid)
+## Remove Inf values
+hybriddata1 <- hybriddata1 %>% filter(siteloadAct != Inf)
+## Overall Model for DG run hours and site load 
+fit <- lm(hybriddata1$siteloadAct ~ hybriddata1$usagetimedg1)
+
+##sites with hybrid and having grid
+hybridgrid1 <- hybriddata1 %>% filter(sitelayout %in% c("TL_UG_OUTDOOR_ONGRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV03",
+                                      "TL_UG_INDOOR_ONGRID_HYBRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV2",
+                                      "TL_UG_INDOOR_ONGRID_REV01", "TL_UG_INDOOR_ONGRID_REV2",
+                                      "TL_UG_OUTDOOR_ONGRID", " TL_UG_OUTDOOR_ONGRID_HYBRID_REV1",
+                                      "TL_UG_INDOOR_ONGRID_HYBRID_REV0", "TL_UG_INDOOR_ONGRID_HYBRID_REV1",
+                                      "TL_UG_INDOOR_ONGRID_REV0", " TL_UG_INDOOR_ONGRID_REV1",
+                                      " TL_UG_OUTDOOR_ONGRID_HYBRID", "TL_UG_OUTDOOR_ONGRID_REV2"))
+
+##sites with hybrid and not having grid
+hybridfull1 <- hybriddata1 %>% filter(!(sitelayout %in% c("TL_UG_OUTDOOR_ONGRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV03",
+                                                        "TL_UG_INDOOR_ONGRID_HYBRID", "TL_UG_INDOOR_ONGRID_HYBRID_REV2",
+                                                        "TL_UG_INDOOR_ONGRID_REV01", "TL_UG_INDOOR_ONGRID_REV2",
+                                                        "TL_UG_OUTDOOR_ONGRID", " TL_UG_OUTDOOR_ONGRID_HYBRID_REV1",
+                                                        "TL_UG_INDOOR_ONGRID_HYBRID_REV0", "TL_UG_INDOOR_ONGRID_HYBRID_REV1",
+                                                        "TL_UG_INDOOR_ONGRID_REV0", " TL_UG_INDOOR_ONGRID_REV1",
+                                                        " TL_UG_OUTDOOR_ONGRID_HYBRID", "TL_UG_OUTDOOR_ONGRID_REV2")))
+
+##site with hybrid and solar
+hybridsolar1 <- hybriddata1 %>% filter(sitelayout %in% c("TL_UG_INDOOR_OFFGRID_HYBRID_SOLAR_REV03",
+                                                         "TL_UG_INDOOR_OFFGRID_HYBRID_SOLAR",
+                                                         "TL_UG_INDOOR_OFFGRID_HYBRID_SOLAR_REV2",
+                                                         "TL_UG_OUTDOOR_OFFGRID_HYBRID_SOLAR"))
+
+##sites with hybrid only
+nameshybridonly <- c("TL_UG_INDOOR_OFFGRID", "TL_UG_INDOOR_OFFGRID_HYBRID",
+                     "TL_UG_INDOOR_OFFGRID_HYBRID_REV0", "TL_UG_INDOOR_OFFGRID_HYBRID_REV1",
+                     "TL_UG_INDOOR_OFFGRID_HYBRID_REV2", "TL_UG_INDOOR_OFFGRID_REV0",
+                     "TL_UG_INDOOR_OFFGRID_REV1", "TL_UG_INDOOR_OFFGRID_REV2",
+                     "TL_UG_OUTDOOR_OFFGRID", "TL_UG_OUTDOOR_OFFGRID_HYBRID",
+                    "TL_UG_OUTDOOR_OFFGRID_HYBRID_REV03")
+##sites with only hybrid
+hybridonly1 <- hybriddata1 %>% filter(sitelayout %in% nameshybridonly)
+
+##hybrid only sites with LiBs
+hybridonlylibs <- hybridonly1 %>% filter(extrafield8 %in% c("libincell", 
+                                                            "liblgchem", 
+                                                            "libacmereime"))
+
+#hybrid only libs
+hybridonlylibs <- hybridonly1 %>% filter(extrafield8 %in% c("libincell", "liblgchem", "libacmereime"))
+####Visualisation graphs
+
+##dengrograms and heatmaps
+
+solarload <- hybridsolar1 %>% select(generalinformationsitename, usagetimedg1, siteload)
+rnames <- solarload[,1]
+mat_solarload <- data.matrix(solarload[,2:ncol(solarload)])
+rownames(mat_solarload) <- rnames
+#Euclidean distance between sites
+distmsload <- dist(mat_solarload, method = "euclidean")
+##create hierarchical clustered object of sites
+hclust_msload <- hclust(distmsload)
+#plot cluster dendrogram
+
+##Clustering all different solar sites
+solarinfo <- c("generalinformationsitename","usagetimedg1",  
+               "usagetimebattery",
+               "usagetimesolar", "dg1ignitioncount","siteload")
+hsolar <- hybridsolar1 %>% select(solarinfo)
+rnames <- hsolar[,1]
+mathsolar <- data.matrix(hsolar[,2:ncol(hsolar)])
+rownames(mathsolar) <- rnames
+distmathsolar <- dist(mathsolar)
+hclusthsolar <- hclust(distmathsolar)
+
+## 30/05/2019
+## Regression analysis
+## select allan's hybrids
+allanHy <- hybriddata1 %>% 
+                 filter(hybriddata1$generalinformationsiteid %in% 
+                                 supervisorList$ATC.SITE.ID)
+## Plots
+## Bad sites
+allanHy %>% filter(generalinformationsitename %in% 
+                           c("Masheruka", "Rubuguri", "Ruhaama", 
+                             "Kitwe", "Rwentuha", "Ikumba", 
+                             "Kyatoko", "Bwambara", "Makanga", 
+                             "Butongo", "Mirama Hills", "Kambugu")) %>% 
+        select(generalinformationsitename, siteload)
+```
+
+
+```{r siteload, echo=FALSE,  fig.height=5, fig.width=10,warning=FALSE, message=FALSE}
+## Plotly scatter plot
+fitSiteload2 <- lm(hybriddata1$siteload ~ hybriddata1$usagetimedg1)
+plot_ly(data=allanHy, x = ~usagetimedg1, y = ~siteload, mode = "markers", color = ~as.factor(sitelayout),
+     xlab = "usagetimedg1 (hrs)", ylab = "siteload (kW)",
+text = ~generalinformationsitename, size = ~siteload) %>% layout(title = "Site Load Vs DG Hours", legend = list(font = list(size = 10)))
+
+#abline(fit, col = "green")
+#abline(v = 10, col = "red", lwd = 2)
+#abline(h = 4, col = "red", lwd = 2)
+```
+
+## Summary Boxplots
+```{r boxplots, echo=FALSE,  fig.height=5, fig.width=10,warning=FALSE, message=FALSE}
+#p <- plot_ly(ggplot2::allanHy, y = ~usagetimedg1, color = ~sitelayout, type = "box")
+#chart_link = api_create(p, filename="box-multiple")
+#chart_link
+plot_ly(data=allanHy, y = ~usagetimedg1, type = "box", color = ~as.factor(sitelayout), showlegend = FALSE)
+
+#p <- allanHy %>% ggplot(aes(y=usagetimedg1, x = siteload)) + 
+#              geom_boxplot() + geom_jitter() + #facet_grid(~usagetimedg1)
+#ggplotly(p) %>% layout(boxmode = 'group')
+
+
+```
+
+## Recommended sites for solar installation  
+- Kabuyanda (Also recommended for grid connection)  
+- Butogota  
+- Karungo 
+- Buhoma  
+- Bukurungu (has space constraints)  
+- Biharwe (has space constraints)  
+
+### Sites requiring optimisation
+- Kikunda  
+- Nyakihanga
+- Burambira  
